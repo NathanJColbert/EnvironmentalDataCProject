@@ -6,7 +6,8 @@
 #include "LCDControl.h"
 #include "commandLineControl.h"
 
-const size_t RATE_SECONDS = 10;
+const int LCD_ADDRESS = 0x27;
+const size_t RATE_SECONDS = 1800;
 const size_t MAX_READ_TRIES = 100;
 
 char *buildQuery(int data[], const char *tableName) {
@@ -151,23 +152,53 @@ void *mainQuery(void *arg) {
     return NULL;
 }
 
-int checkExitInput(const char *input) {
-	if (strlen(input) != 1) return 0;
-	return input[0] == 'q' || input[0] == 'Q';
+int testInput(char *input, const char *ref, int allowFirstChar) {
+	if (input == NULL || ref == NULL)
+        return 0;
+    if (allowFirstChar && strlen(input) == 1 && 
+		tolower((unsigned char)input[0]) == tolower((unsigned char)ref[0])) 
+			return 1;
+    while (*input && *ref) {
+        if (tolower((unsigned char)*input) != tolower((unsigned char)*ref))
+            return 0;
+        input++;
+        ref++;
+    }
+    return *input == '\0' && *ref == '\0';
 }
 
-void menuInput() {
-	char input;
-    printf("Press 'q' to stop...\n");
+void printCommands() {
+	printf("%5s%40s\n", "Help / H", "Show all commands.");
+	printf("%5s%40s\n", "Quit / Q", "Quit the program.");
+	printf("%5s%40s\n", "T / Test", "Test the SQL connection.");
+}
+
+void enterToContinue() {
+	puts("Enter to continue.");
+	getchar();
+}
+
+void menuInput(SQLSetup *setup) {
+	char *input = NULL;
+	printf("%5s%40s\n", "Help / H", "Show all commands.");
     while (1) {
-        input = getchar();
-        if (input == 'q' || input == 'Q') {
+		if (input != NULL) free(input);
+        input = promptString("Command: ");
+        if (testInput(input, "help", 1)) {
+            printCommands();
+            enterToContinue();
+        }
+        else if (testInput(input, "quit", 1)) {
             stopMainQueryThread = 1;
             break;
         }
+        else if (testInput(input, "test", 1)) {
+			printf("%s\n", (testConnection(setup) ? "Connection is valid." : "Connection is NOT valid."));
+            enterToContinue();
+        }
         clearScreen();
-        printf("Press 'q' to stop...\n");
     }
+    if (input != NULL) free(input);
 }
 
 int getEnvironmentSetup(SQLSetup *setup) {
@@ -235,22 +266,22 @@ int main(void) {
 	
 	if (!getEnvironmentSetup(&setup)) {
 		while (1) {
-			printf("Database information (q to exit)\n");
+			printf("Database information (Quit / Q to exit)\n");
 			initSetup(&setup);
 			setup.server = promptString("Server: ");
-			if (checkExitInput(setup.server)) { exitProgram = 1; break; }
+			if (testInput(setup.server, "quit", 1)) { exitProgram = 1; break; }
 		
 			setup.user = promptString("User: ");
-			if (checkExitInput(setup.user)) { exitProgram = 1; break; }
+			if (testInput(setup.user, "quit", 1)) { exitProgram = 1; break; }
 		
 			setup.password = promptString("Password: ");
-			if (checkExitInput(setup.password)) { exitProgram = 1; break; }
+			if (testInput(setup.password, "quit", 0)) { exitProgram = 1; break; }
 		
 			setup.database = promptString("Database: ");
-			if (checkExitInput(setup.database)) { exitProgram = 1; break; }
+			if (testInput(setup.database, "quit", 0)) { exitProgram = 1; break; }
 		
 			setup.table = promptString("Table: ");
-			if (checkExitInput(setup.table)) { exitProgram = 1; break; }
+			if (testInput(setup.table, "quit", 0)) { exitProgram = 1; break; }
 		
 			clearScreen();
 			if (testConnection(&setup)) break;
@@ -264,7 +295,7 @@ int main(void) {
 	}
 	
 	if (!dht11_init(7)) return -1;
-	lcd_init(0x27);
+	lcd_init(LCD_ADDRESS);
 	
 	pthread_t mainQueryThread;
 	if (pthread_create(&mainQueryThread, NULL, mainQuery, &setup) != 0) {
@@ -272,7 +303,7 @@ int main(void) {
         exit(EXIT_FAILURE);
     }
 	
-	menuInput();
+	menuInput(&setup);
 	
 	pthread_join(mainQueryThread, NULL);
     freeSetup(&setup);
