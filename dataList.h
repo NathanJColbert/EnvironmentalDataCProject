@@ -104,6 +104,22 @@ void getMinMaxTemperature(DataNode *dataList, double *min, double *max, double b
     }
 }
 
+void getMinMaxHumidity(DataNode *dataList, double *min, double *max, double buffer) {
+    if (dataList == NULL || min == NULL || max == NULL) return;
+    *min = INFINITY;
+    *max = -INFINITY;
+    DataNode *current = dataList;
+    while (current != NULL) {
+        if (current->data.humidity < *min) *min = current->data.humidity;
+        if (current->data.humidity > *max) *max = current->data.humidity;
+        current = current->next;
+    }
+    if (*min == *max) {
+        *min -= buffer;
+        *max += buffer;
+    }
+}
+
 void getMinMaxValue(DataNode *dataList, double *min, double *max, double buffer) {
     if (dataList == NULL || min == NULL || max == NULL) return;
     *min = INFINITY;

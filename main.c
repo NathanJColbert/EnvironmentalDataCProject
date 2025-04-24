@@ -10,7 +10,7 @@
 #include "dataList.h"
 
 const int LCD_ADDRESS = 0x27;
-const size_t RATE_SECONDS = 1800;
+const size_t RATE_SECONDS = 600;
 const size_t MAX_READ_TRIES = 100;
 const size_t MAX_STORE_TRIES = 5;
 
@@ -227,7 +227,7 @@ int getDataInRange(SQLSetup *setup, TimeValue *start, TimeValue *end, DataNode *
 }
 
 char *promptString(const char *prompt) {
-	printf("%15s", prompt);
+	printf("%s", prompt);
 	char buffer[256];
 	fgets(buffer, sizeof(buffer), stdin);
 	
@@ -302,7 +302,8 @@ void printCommands() {
 
 void enterToContinue() {
 	puts("Enter to continue.");
-	getchar();
+	char *temp = promptString("");
+	free(temp);
 }
 
 void initTime(TimeValue *start, TimeValue *end) {
@@ -329,18 +330,31 @@ void initTime(TimeValue *start, TimeValue *end) {
 
 void printTimeRange(TimeValue *start, TimeValue *end) {
 	if (start == NULL || end == NULL) return;
-	printf("%04d-%02d-%02d %02d - %04d-%02d-%02d %02d\n",
+	printf("%04d-%02d-%02d %02d to %04d-%02d-%02d %02d\n",
 		start->year, start->month, start->day, start->hour,
 		end->year, end->month, end->day, end->hour);
 }
 
-void plotData(DataNode *dataList, TimeValue *start, TimeValue *end) {
+enum PlotType { BOTH = 0, TEMPERATURE = 1, HUMIDITY = 2 };
+
+void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotType type) {
 	if (dataList == NULL) return;
 	dataList = sortDataByTimestamp(dataList);
 	
 	double buffer = 2.0;
     double min, max;
-    getMinMaxValue(dataList, &min, &max, buffer);
+    switch (type) {
+		case BOTH:
+			getMinMaxValue(dataList, &min, &max, buffer);
+			break;
+		case TEMPERATURE:
+			getMinMaxTemperature(dataList, &min, &max, buffer);
+			break;
+		case HUMIDITY:
+			getMinMaxHumidity(dataList, &min, &max, buffer);
+			break;
+		default: return;
+	}
 	
 	FILE *gnuplot = popen("gnuplot -persistent", "w");
     if (gnuplot == NULL) {
@@ -361,29 +375,57 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end) {
 		end->year, end->month, end->day, end->hour, 59, 59);
 	fprintf(gnuplot, "set yrange [%lf:%lf]\n", min - buffer, max + buffer);
 	
-	fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5, "
+	switch (type) {
+		case BOTH:
+			fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5, "
 					 "'-' using 1:2 title 'Humidity' with linespoints pt 7 ps 1.5\n");
-	DataNode *current = dataList;
-    while (current != NULL) {
-        char timestamp[64];
-        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
-                 current->data.time.year, current->data.time.month, current->data.time.day,
-                 current->data.time.hour, current->data.time.minute, current->data.time.second);
-        fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
-        current = current->next;
-    }
-    fprintf(gnuplot, "e\n");
-    
-	current = dataList;
-    while (current != NULL) {
-        char timestamp[64];
-        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
-                 current->data.time.year, current->data.time.month, current->data.time.day,
-                 current->data.time.hour, current->data.time.minute, current->data.time.second);
-        fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.humidity);
-        current = current->next;
-    }
-    fprintf(gnuplot, "e\n");
+			break;
+		case HUMIDITY:
+			fprintf(gnuplot, "plot '-' using 1:2 title 'Humidity' with linespoints pt 7 ps 1.5\n");
+			break;
+		case TEMPERATURE:
+			fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5\n");
+			break;
+	}
+	
+	DataNode *current = NULL;
+	
+	switch (type) {
+		case BOTH:
+			current = dataList;
+			while (current != NULL) {
+				char timestamp[64];
+				snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
+					current->data.time.year, current->data.time.month, current->data.time.day,
+					current->data.time.hour, current->data.time.minute, current->data.time.second);
+				fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
+				current = current->next;
+			}
+			fprintf(gnuplot, "e\n");
+		case HUMIDITY:
+			current = dataList;
+			while (current != NULL) {
+				char timestamp[64];
+				snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
+					current->data.time.year, current->data.time.month, current->data.time.day,
+					current->data.time.hour, current->data.time.minute, current->data.time.second);
+				fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.humidity);
+				current = current->next;
+			}
+			fprintf(gnuplot, "e\n");
+			break;
+		case TEMPERATURE:
+			current = dataList;
+			while (current != NULL) {
+				char timestamp[64];
+				snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
+					current->data.time.year, current->data.time.month, current->data.time.day,
+					current->data.time.hour, current->data.time.minute, current->data.time.second);
+				fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
+				current = current->next;
+			}
+			fprintf(gnuplot, "e\n");
+	}
     
     fflush(gnuplot);
     pclose(gnuplot);
@@ -413,28 +455,68 @@ void listData(SQLSetup *setup, TimeValue *start, TimeValue *end) {
 	freeDataList(dataList);
 }
 
+void printGraphingType(enum PlotType plotType) {
+	switch (plotType) {
+		case BOTH: puts("Graph BOTH"); break;
+		case TEMPERATURE: puts("Graph TEMPERATURE"); break;
+		case HUMIDITY: puts("Graph HUMIDITY"); break;
+		default: puts("Invalid graphing type. Please change it.");
+	}
+}
+
+void printEvaluationCommands() {
+	printf("%5s%40s\n", "Help / H", "Show all commands.");
+	printf("%5s%40s\n", "List / L", "List data in time range.");
+	printf("%5s%40s\n", "Plot / P", "Plot data in time range given graph type.");
+	printf("%5s%40s\n", "Type / T", "Change graphing type.");
+	printf("%5s%40s\n", "Back / B", "Back to main control.");
+}
+
 void databaseMenu(SQLSetup *setup) {
 	char *input = NULL;
 	TimeValue start;
 	TimeValue end;
+	enum PlotType plotType = BOTH;
 	initTime(&start, &end);
 	clearScreen();
 	while (1) {
 		if (input != NULL) free(input);
+		puts("DATA EVALUATION");
 		printTimeRange(&start, &end);
-        input = promptString("Control: ");
-        if (testInput(input, "list", 1)) {
+		printGraphingType(plotType);
+        input = promptString("> ");
+        if (testInput(input, "help", 1)) {
+			clearScreen();
+			printEvaluationCommands();
+			enterToContinue();
+		}
+        else if (testInput(input, "list", 1)) {
+			clearScreen();
 			listData(setup, &start, &end);
 			enterToContinue();
         }
         else if (testInput(input, "plot", 1)) {
+			clearScreen();
 			DataNode *dataList = NULL;
 			if (getDataInRange(setup, &start, &end, &dataList)) {
-				plotData(dataList, &start, &end);
-				//clearScreen();
+				plotData(dataList, &start, &end, plotType);
 				enterToContinue();
 			}
 			freeDataList(dataList);
+		}
+		else if (testInput(input, "type", 1)) {
+			clearScreen();
+			char *tempInput = promptString("Enter a graphing type (BOTH / B, TEMPERATURE / T, HUMIDITY / H)\n> ");
+			if (testInput(tempInput, "both", 1)) {
+				plotType = BOTH;
+			}
+			else if (testInput(tempInput, "temperature", 1)) {
+				plotType = TEMPERATURE;
+			}
+			else if (testInput(tempInput, "humidity", 1)) {
+				plotType = HUMIDITY;
+			}
+			if (tempInput != NULL) free(tempInput);
 		}
         else if (testInput(input, "back", 1))
             break;
@@ -448,16 +530,20 @@ void menuInput(SQLSetup *setup) {
 	printf("%5s%40s\n", "Help / H", "Show all commands.");
     while (1) {
 		if (input != NULL) free(input);
-        input = promptString("Command: ");
+        input = promptString("> ");
         if (testInput(input, "help", 1)) {
+			clearScreen();
             printCommands();
             enterToContinue();
         }
         else if (testInput(input, "quit", 1)) {
+			clearScreen();
             stopMainQueryThread = 1;
+            puts("Quitting application...");
             break;
         }
         else if (testInput(input, "test", 1)) {
+			clearScreen();
 			printf("%s\n", (testConnection(setup) ? "Connection is valid." : "Connection is NOT valid."));
             enterToContinue();
         }
