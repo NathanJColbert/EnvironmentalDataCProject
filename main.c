@@ -1,16 +1,20 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <mysql/mysql.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 #include "DHT11Control.h"
 #include "LCDControl.h"
 #include "commandLineControl.h"
+#include "dataList.h"
 
 const int LCD_ADDRESS = 0x27;
 const size_t RATE_SECONDS = 1800;
 const size_t MAX_READ_TRIES = 100;
+const size_t MAX_STORE_TRIES = 5;
 
-char *buildQuery(int data[], const char *tableName) {
+char *buildStoreQuery(int data[], const char *tableName) {
 	// insert into tableName values (x, y, z, ... );
 	char *output = malloc(sizeof(char) * 256);
 	if (output == NULL) {
@@ -85,19 +89,25 @@ int testConnection(SQLSetup *setup) {
 	return result;
 }
 
-int storeData(int data[], SQLSetup *setup) {
+MYSQL *buildConnection(SQLSetup *setup) {
 	MYSQL *conn;
-
     conn = mysql_init(NULL);
     if (conn == NULL) {
         fprintf(stderr, "mysql_init() failed\n");
-        return 0;
+        return NULL;
     }
     if (!mysql_real_connect(conn, setup->server, setup->user, setup->password, setup->database, 0, NULL, 0)) {
         fprintf(stderr, "%s\n", mysql_error(conn));
-        return 0;
+        return NULL;
     }
-    char *query = buildQuery(data, setup->table);
+    return conn;
+}
+
+int storeData(int data[], SQLSetup *setup) {
+	MYSQL *conn = buildConnection(setup);
+	if (conn == NULL) return 0;
+	
+    char *query = buildStoreQuery(data, setup->table);
     if (mysql_query(conn, query)) {
         fprintf(stderr, "%s\n", mysql_error(conn));
         free(query);
@@ -107,6 +117,113 @@ int storeData(int data[], SQLSetup *setup) {
 
     mysql_close(conn);
     return 1;
+}
+
+struct timeValue {
+	unsigned int year;
+	unsigned int month;
+	unsigned int day;
+	unsigned int hour;
+};
+typedef struct timeValue TimeValue;
+int getDataInRange(SQLSetup *setup, TimeValue *start, TimeValue *end, DataNode **dataList) {
+	if (start == NULL || end == NULL) {
+		fprintf(stderr, "Null time range passed.\n");
+		return 0;
+	}
+	
+	MYSQL *conn = buildConnection(setup);
+	if (conn == NULL) return 0;
+	
+	MYSQL_BIND bind[2];
+	MYSQL_TIME sql_start, sql_end;
+	memset(bind, 0, sizeof(bind));
+	memset(&sql_start, 0, sizeof(sql_start));
+	memset(&sql_end, 0, sizeof(sql_end));
+	
+	sql_start.year = start->year;
+	sql_start.month = start->month;
+	sql_start.day = start->day;
+	sql_start.hour = start->hour;
+
+	sql_end.year = end->year;
+	sql_end.month = end->month;
+	sql_end.day = end->day;
+	sql_end.hour = end->hour;
+	// Just in case you are checking a single hour
+	sql_end.minute = 59;
+	sql_end.second = 59;
+	
+	bind[0].buffer_type = MYSQL_TYPE_TIMESTAMP;
+	bind[0].buffer = (void*)&sql_start;
+	bind[0].is_null = 0;
+	bind[1].buffer_type = MYSQL_TYPE_TIMESTAMP;
+	bind[1].buffer = (void *)&sql_end;
+	bind[1].is_null = 0;
+	
+	MYSQL_STMT *stmt = mysql_stmt_init(conn);
+	if (!stmt) {
+		fprintf(stderr, "mysql_stmt_init() failed\n");
+		mysql_close(conn);
+		return 1;
+	}
+
+	if (mysql_stmt_prepare(stmt, "SELECT * FROM data_main WHERE time BETWEEN ? AND ?", -1)) {
+		fprintf(stderr, "mysql_stmt_prepare() failed: %s\n", mysql_stmt_error(stmt));
+		mysql_stmt_close(stmt);
+		mysql_close(conn);
+		return 1;
+	}
+
+	if (mysql_stmt_bind_param(stmt, bind)) {
+		fprintf(stderr, "mysql_stmt_bind_param() failed: %s\n", mysql_stmt_error(stmt));
+		mysql_stmt_close(stmt);
+		mysql_close(conn);
+		return 1;
+	}
+
+	if (mysql_stmt_execute(stmt)) {
+		fprintf(stderr, "mysql_stmt_execute() failed: %s\n", mysql_stmt_error(stmt));
+		mysql_stmt_close(stmt);
+		mysql_close(conn);
+		return 1;
+	}
+	
+	// FETCH
+	MYSQL_BIND resultBind[5];
+    memset(resultBind, 0, sizeof(resultBind));
+	
+    int dataValues[5];
+    MYSQL_TIME ts;
+
+    resultBind[0].buffer_type = MYSQL_TYPE_LONG;
+    resultBind[0].buffer = &dataValues[0];
+	resultBind[1].buffer_type = MYSQL_TYPE_LONG;
+    resultBind[1].buffer = &dataValues[1];
+	resultBind[2].buffer_type = MYSQL_TYPE_LONG;
+    resultBind[2].buffer = &dataValues[2];
+    resultBind[3].buffer_type = MYSQL_TYPE_LONG;
+    resultBind[3].buffer = &dataValues[3];
+    resultBind[4].buffer_type = MYSQL_TYPE_TIMESTAMP;
+    resultBind[4].buffer = &ts;
+
+    if (mysql_stmt_bind_result(stmt, resultBind)) {
+        fprintf(stderr, "Result bind failed: %s\n", mysql_stmt_error(stmt));
+        mysql_stmt_close(stmt);
+        mysql_close(conn);
+        return 0;
+    }
+
+    while (mysql_stmt_fetch(stmt) == 0) {
+		DataValue *data = malloc(sizeof(DataValue));
+		data->time = ts;
+		convertData(dataValues, &data->temperature, &data->humidity);
+		appendDataNode(dataList, data);
+    }
+	
+	mysql_stmt_close(stmt);
+	mysql_close(conn);
+	return 1;
 }
 
 char *promptString(const char *prompt) {
@@ -129,7 +246,10 @@ void processData(SQLSetup *setup) {
 	int data[5];
 	for (size_t i = 0; i < MAX_READ_TRIES; i++) {
 		if (read_dht11_dat(data)) {
-			storeData(data, setup);
+			for (size_t j = 0; j < MAX_STORE_TRIES; j++) {
+				if (storeData(data, setup)) continue;
+				sleep(1);
+			}
 			double temp, hum;
 			convertData(data, &hum, &temp);
 			writeData(temp, hum, time(NULL));
@@ -142,6 +262,12 @@ void processData(SQLSetup *setup) {
 volatile int stopMainQueryThread = 0;
 void *mainQuery(void *arg) {
 	SQLSetup *setup = (SQLSetup*)arg;
+	// Wait the time before processing. So I can test run the program without adding
+	// unnecessary data.
+	for (size_t i = 0; i < RATE_SECONDS; i++) {
+			if (stopMainQueryThread) break;
+			sleep(1);
+	}
 	while (!stopMainQueryThread) {
         processData(setup);
 		for (size_t i = 0; i < RATE_SECONDS; i++) {
@@ -170,12 +296,151 @@ int testInput(char *input, const char *ref, int allowFirstChar) {
 void printCommands() {
 	printf("%5s%40s\n", "Help / H", "Show all commands.");
 	printf("%5s%40s\n", "Quit / Q", "Quit the program.");
-	printf("%5s%40s\n", "T / Test", "Test the SQL connection.");
+	printf("%5s%40s\n", "Test / T", "Test the SQL connection.");
+	printf("%5s%40s\n", "Data / D", "Open the tool to check the database.");
 }
 
 void enterToContinue() {
 	puts("Enter to continue.");
 	getchar();
+}
+
+void initTime(TimeValue *start, TimeValue *end) {
+    time_t now = time(NULL);
+    // static buffer (dont need to free)
+    struct tm *now_tm = localtime(&now);
+    
+    // Years since 1900
+    end->year = now_tm->tm_year + 1900;
+    // [0, 11]
+    end->month = now_tm->tm_mon + 1;
+    end->day = now_tm->tm_mday;
+    end->hour = now_tm->tm_hour;
+
+    // current - 24 hours
+    time_t yesterday = now - 24 * 60 * 60;
+    struct tm *yesterday_tm = localtime(&yesterday);
+
+    start->year = yesterday_tm->tm_year + 1900;
+    start->month = yesterday_tm->tm_mon + 1;
+    start->day = yesterday_tm->tm_mday;
+    start->hour = yesterday_tm->tm_hour;
+}
+
+void printTimeRange(TimeValue *start, TimeValue *end) {
+	if (start == NULL || end == NULL) return;
+	printf("%04d-%02d-%02d %02d - %04d-%02d-%02d %02d\n",
+		start->year, start->month, start->day, start->hour,
+		end->year, end->month, end->day, end->hour);
+}
+
+void plotData(DataNode *dataList, TimeValue *start, TimeValue *end) {
+	if (dataList == NULL) return;
+	dataList = sortDataByTimestamp(dataList);
+	
+	double buffer = 2.0;
+    double min, max;
+    getMinMaxValue(dataList, &min, &max, buffer);
+	
+	FILE *gnuplot = popen("gnuplot -persistent", "w");
+    if (gnuplot == NULL) {
+        perror("Failed to open gnuplot");
+        return;
+    }
+	
+	fprintf(gnuplot, "set terminal wxt\n");
+
+    fprintf(gnuplot, "set xdata time\n");
+    fprintf(gnuplot, "set timefmt '%%Y-%%m-%%d%%H:%%M:%%S'\n");
+    fprintf(gnuplot, "set format x '%%H:%%M'\n");
+    fprintf(gnuplot, "set xlabel 'Time'\n");
+    fprintf(gnuplot, "set ylabel 'Temperature (C)'\n");
+	
+	fprintf(gnuplot, "set xrange ['%04d-%02d-%02d%02d:%02d:%02d' to '%04d-%02d-%02d%02d:%02d:%02d']\n",
+		start->year, start->month, start->day, start->hour, 0, 0,
+		end->year, end->month, end->day, end->hour, 59, 59);
+	fprintf(gnuplot, "set yrange [%lf:%lf]\n", min - buffer, max + buffer);
+	
+	fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5, "
+					 "'-' using 1:2 title 'Humidity' with linespoints pt 7 ps 1.5\n");
+	DataNode *current = dataList;
+    while (current != NULL) {
+        char timestamp[64];
+        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
+                 current->data.time.year, current->data.time.month, current->data.time.day,
+                 current->data.time.hour, current->data.time.minute, current->data.time.second);
+        fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
+        current = current->next;
+    }
+    fprintf(gnuplot, "e\n");
+    
+	current = dataList;
+    while (current != NULL) {
+        char timestamp[64];
+        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
+                 current->data.time.year, current->data.time.month, current->data.time.day,
+                 current->data.time.hour, current->data.time.minute, current->data.time.second);
+        fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.humidity);
+        current = current->next;
+    }
+    fprintf(gnuplot, "e\n");
+    
+    fflush(gnuplot);
+    pclose(gnuplot);
+}
+
+void listData(SQLSetup *setup, TimeValue *start, TimeValue *end) {
+	DataNode *dataList = NULL;
+    if (!getDataInRange(setup, start, end, &dataList)) return;
+    DataNode *current = dataList;
+    int totalDataBlocks = 0;
+    double averageTemp = 0;
+    double averageHum = 0;
+	while (current != NULL) {
+		printf("Temperature: %.3lf | Humidity: %.3lf | Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+			current->data.temperature, current->data.humidity,
+			current->data.time.year, current->data.time.month, current->data.time.day,
+			current->data.time.hour, current->data.time.minute, current->data.time.second);
+		averageTemp += current->data.temperature;
+		averageHum += current->data.humidity;
+		current = current->next;
+		totalDataBlocks++;
+	}
+	averageTemp /= totalDataBlocks;
+	averageHum /= totalDataBlocks;
+	printf("\nAverage temperature: %.3lf | Average humidity: %.3lf\n", averageTemp, averageHum);
+	printf("Total values in set: %d\n", totalDataBlocks);
+	freeDataList(dataList);
+}
+
+void databaseMenu(SQLSetup *setup) {
+	char *input = NULL;
+	TimeValue start;
+	TimeValue end;
+	initTime(&start, &end);
+	clearScreen();
+	while (1) {
+		if (input != NULL) free(input);
+		printTimeRange(&start, &end);
+        input = promptString("Control: ");
+        if (testInput(input, "list", 1)) {
+			listData(setup, &start, &end);
+			enterToContinue();
+        }
+        else if (testInput(input, "plot", 1)) {
+			DataNode *dataList = NULL;
+			if (getDataInRange(setup, &start, &end, &dataList)) {
+				plotData(dataList, &start, &end);
+				//clearScreen();
+				enterToContinue();
+			}
+			freeDataList(dataList);
+		}
+        else if (testInput(input, "back", 1))
+            break;
+        clearScreen();
+	}
+	if (input != NULL) free(input);
 }
 
 void menuInput(SQLSetup *setup) {
@@ -195,6 +460,9 @@ void menuInput(SQLSetup *setup) {
         else if (testInput(input, "test", 1)) {
 			printf("%s\n", (testConnection(setup) ? "Connection is valid." : "Connection is NOT valid."));
             enterToContinue();
+        }
+        else if (testInput(input, "data", 1)) {
+			databaseMenu(setup);
         }
         clearScreen();
     }
