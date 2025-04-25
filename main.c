@@ -126,6 +126,24 @@ struct timeValue {
 	unsigned int hour;
 };
 typedef struct timeValue TimeValue;
+
+int copyTimeValue(TimeValue *dest, TimeValue *src) {
+	if (dest == NULL || src == NULL) return 0;
+	dest->year = src->year;
+	dest->month = src->month;
+	dest->day = src->day;
+	dest->hour = src->hour;
+	return 1;
+}
+
+int timeDifference(TimeValue *lhs, TimeValue *rhs) {
+	if (lhs->year != rhs->year) return lhs->year - rhs->year;
+    if (lhs->month != rhs->month) return lhs->month - rhs->month;
+    if (lhs->day != rhs->day) return lhs->day - rhs->day;
+    if (lhs->hour != rhs->hour) return lhs->hour - rhs->hour;
+    return 0;
+}
+
 int getDataInRange(SQLSetup *setup, TimeValue *start, TimeValue *end, DataNode **dataList) {
 	if (start == NULL || end == NULL) {
 		fprintf(stderr, "Null time range passed.\n");
@@ -334,6 +352,11 @@ void printTimeRange(TimeValue *start, TimeValue *end) {
 		start->year, start->month, start->day, start->hour,
 		end->year, end->month, end->day, end->hour);
 }
+void printTime(TimeValue *value) {
+	if (value == NULL) return;
+	printf("%04d-%02d-%02d %02d\n",
+		value->year, value->month, value->day, value->hour);
+}
 
 enum PlotType { BOTH = 0, TEMPERATURE = 1, HUMIDITY = 2 };
 
@@ -467,9 +490,90 @@ void printGraphingType(enum PlotType plotType) {
 void printEvaluationCommands() {
 	printf("%5s%40s\n", "Help / H", "Show all commands.");
 	printf("%5s%40s\n", "List / L", "List data in time range.");
-	printf("%5s%40s\n", "Plot / P", "Plot data in time range given graph type.");
+	printf("%5s%40s\n", "Graph / G", "Graph the data in the time range.");
 	printf("%5s%40s\n", "Type / T", "Change graphing type.");
+	printf("%5s%40s\n", "Range / R", "Set the time range for data retrieval.");
 	printf("%5s%40s\n", "Back / B", "Back to main control.");
+}
+
+void changeTimeValue(TimeValue *value) {
+	char *input = NULL;
+	while (1) {
+		if (input != NULL) free(input);
+		puts("CURRENT TIME");
+		printTime(value);
+		input = promptString("> ");
+		if (testInput(input, "year", 1)) {
+			clearScreen();
+			puts("Enter new year: ");
+			scanf("%u", &value->year);
+		}
+		else if (testInput(input, "month", 1)) {
+			clearScreen();
+			puts("Enter new month (1 - 12) : ");
+			unsigned int tempMonth = value->month;
+			scanf("%u", &value->month);
+			if (value->month == 0 || value->month > 12) {
+				value->month = tempMonth;
+				puts("Invalid month.");
+				enterToContinue();
+			}
+		}
+		else if (testInput(input, "day", 1)) {
+			clearScreen();
+			puts("Enter new day (1 - 31) : ");
+			unsigned int tempDay = value->day;
+			scanf("%u", &value->day);
+			if (value->day == 0 || value->day > 31) {
+				value->day = tempDay;
+				puts("Invalid day.");
+				enterToContinue();
+			}
+		}
+		else if (testInput(input, "hour", 1)) {
+			clearScreen();
+			puts("Enter new hour (0 [12am] - 23 [12pm]) : ");
+			unsigned int tempHour = value->hour;
+			scanf("%u", &value->hour);
+			if (value->hour > 23) {
+				value->hour = tempHour;
+				puts("Invalid hour.");
+				enterToContinue();
+			}
+		}
+		else if (testInput(input, "back", 1)) {
+			break;
+		}
+		clearScreen();
+	}
+	if (input != NULL) free(input);
+}
+void setRange(TimeValue *start, TimeValue *end) {
+	char *input = NULL;
+	while (1) {
+		if (input != NULL) free(input);
+		puts("CHANGE TIME RANGE");
+		printTimeRange(start, end);
+		input = promptString("> ");
+		if (testInput(input, "start", 1)) {
+			TimeValue temp;
+			copyTimeValue(&temp, start);
+			changeTimeValue(start);
+			if (timeDifference(start, end) > 0) {
+				copyTimeValue(start, &temp);
+				puts("Start time exceeds end time. Reverting.");
+				enterToContinue();
+			}
+		}
+		else if (testInput(input, "end", 1)) {
+			
+		}
+		else if (testInput(input, "back", 1)) {
+			break;
+		}
+		clearScreen();
+	}
+	if (input != NULL) free(input);
 }
 
 void databaseMenu(SQLSetup *setup) {
@@ -495,7 +599,7 @@ void databaseMenu(SQLSetup *setup) {
 			listData(setup, &start, &end);
 			enterToContinue();
         }
-        else if (testInput(input, "plot", 1)) {
+        else if (testInput(input, "graph", 1)) {
 			clearScreen();
 			DataNode *dataList = NULL;
 			if (getDataInRange(setup, &start, &end, &dataList)) {
@@ -517,6 +621,10 @@ void databaseMenu(SQLSetup *setup) {
 				plotType = HUMIDITY;
 			}
 			if (tempInput != NULL) free(tempInput);
+		}
+		else if (testInput(input, "range", 1)) {
+			clearScreen();
+			setRange(&start, &end);
 		}
         else if (testInput(input, "back", 1))
             break;
