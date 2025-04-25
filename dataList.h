@@ -4,6 +4,7 @@
 
 struct dataValue {
 	double temperature;
+	double f_temperature;
 	double humidity;
 	MYSQL_TIME time;
 };
@@ -88,14 +89,15 @@ DataNode* sortDataByTimestamp(DataNode *dataList) {
     return sorted;
 }
 
-void getMinMaxTemperature(DataNode *dataList, double *min, double *max, double buffer) {
+void getMinMaxTemperature(DataNode *dataList, double *min, double *max, double buffer, int fahrenheit) {
     if (dataList == NULL || min == NULL || max == NULL) return;
     *min = INFINITY;
     *max = -INFINITY;
     DataNode *current = dataList;
     while (current != NULL) {
-        if (current->data.temperature < *min) *min = current->data.temperature;
-        if (current->data.temperature > *max) *max = current->data.temperature;
+	int temp = (fahrenheit ? current->data.f_temperature : current->data.temperature);
+        if (temp < *min) *min = temp;
+        if (temp > *max) *max = temp;
         current = current->next;
     }
     if (*min == *max) {
@@ -120,15 +122,16 @@ void getMinMaxHumidity(DataNode *dataList, double *min, double *max, double buff
     }
 }
 
-void getMinMaxValue(DataNode *dataList, double *min, double *max, double buffer) {
+void getMinMaxValue(DataNode *dataList, double *min, double *max, double buffer, int fahrenheit) {
     if (dataList == NULL || min == NULL || max == NULL) return;
     *min = INFINITY;
     *max = -INFINITY;
     DataNode *current = dataList;
     while (current != NULL) {
-        if (current->data.temperature < *min) *min = current->data.temperature;
+	int temp = (fahrenheit ? current->data.f_temperature : current->data.temperature);
+        if (temp < *min) *min = temp;
 	if (current->data.humidity < *min) *min = current->data.humidity;
-        if (current->data.temperature > *max) *max = current->data.temperature;
+        if (temp > *max) *max = temp;
 	if (current->data.humidity > *max) *max = current->data.humidity;
         current = current->next;
     }

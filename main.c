@@ -236,6 +236,7 @@ int getDataInRange(SQLSetup *setup, TimeValue *start, TimeValue *end, DataNode *
 		DataValue *data = malloc(sizeof(DataValue));
 		data->time = ts;
 		convertData(dataValues, &data->temperature, &data->humidity);
+		data->f_temperature = (data->temperature * (9.0/5.0)) + 32;
 		appendDataNode(dataList, data);
     }
 	
@@ -371,7 +372,7 @@ void printTime(TimeValue *value) {
 
 enum PlotType { BOTH = 0, TEMPERATURE = 1, HUMIDITY = 2 };
 
-void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotType type) {
+void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotType type, int fahrenheit) {
 	if (dataList == NULL) return;
 	dataList = sortDataByTimestamp(dataList);
 	
@@ -379,10 +380,10 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
     double min, max;
     switch (type) {
 		case BOTH:
-			getMinMaxValue(dataList, &min, &max, buffer);
+			getMinMaxValue(dataList, &min, &max, buffer, fahrenheit);
 			break;
 		case TEMPERATURE:
-			getMinMaxTemperature(dataList, &min, &max, buffer);
+			getMinMaxTemperature(dataList, &min, &max, buffer, fahrenheit);
 			break;
 		case HUMIDITY:
 			getMinMaxHumidity(dataList, &min, &max, buffer);
@@ -402,7 +403,6 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
     fprintf(gnuplot, "set timefmt '%%Y-%%m-%%d%%H:%%M:%%S'\n");
     fprintf(gnuplot, "set format x '%%H:%%M'\n");
     fprintf(gnuplot, "set xlabel 'Time'\n");
-    fprintf(gnuplot, "set ylabel 'Temperature (C)'\n");
 	
 	fprintf(gnuplot, "set xrange ['%04d-%02d-%02d%02d:%02d:%02d' to '%04d-%02d-%02d%02d:%02d:%02d']\n",
 		start->year, start->month, start->day, start->hour, 0, 0,
@@ -411,13 +411,16 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
 	
 	switch (type) {
 		case BOTH:
+			fprintf(gnuplot, "set ylabel 'Temperature (%s) / Humidity'\n", (fahrenheit ? "F" : "C"));
 			fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5, "
 					 "'-' using 1:2 title 'Humidity' with linespoints pt 7 ps 1.5\n");
 			break;
 		case HUMIDITY:
+			fprintf(gnuplot, "set ylabel 'Humidity'\n");
 			fprintf(gnuplot, "plot '-' using 1:2 title 'Humidity' with linespoints pt 7 ps 1.5\n");
 			break;
 		case TEMPERATURE:
+			fprintf(gnuplot, "set ylabel 'Temperature (%s)'\n", (fahrenheit ? "F" : "C"));
 			fprintf(gnuplot, "plot '-' using 1:2 title 'Temperature' with linespoints pt 7 ps 1.5\n");
 			break;
 	}
@@ -432,7 +435,7 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
 				snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
 					current->data.time.year, current->data.time.month, current->data.time.day,
 					current->data.time.hour, current->data.time.minute, current->data.time.second);
-				fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
+				fprintf(gnuplot, "%s %.2lf\n", timestamp, (fahrenheit ? current->data.f_temperature : current->data.temperature));
 				current = current->next;
 			}
 			fprintf(gnuplot, "e\n");
@@ -455,7 +458,7 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
 				snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d%02d:%02d:%02d",
 					current->data.time.year, current->data.time.month, current->data.time.day,
 					current->data.time.hour, current->data.time.minute, current->data.time.second);
-				fprintf(gnuplot, "%s %.2lf\n", timestamp, current->data.temperature);
+				fprintf(gnuplot, "%s %.2lf\n", timestamp, (fahrenheit ? current->data.f_temperature : current->data.temperature));
 				current = current->next;
 			}
 			fprintf(gnuplot, "e\n");
@@ -465,7 +468,7 @@ void plotData(DataNode *dataList, TimeValue *start, TimeValue *end, enum PlotTyp
     pclose(gnuplot);
 }
 
-void listData(SQLSetup *setup, TimeValue *start, TimeValue *end) {
+void listData(SQLSetup *setup, TimeValue *start, TimeValue *end, int fahrenheit) {
 	DataNode *dataList = NULL;
     if (!getDataInRange(setup, start, end, &dataList)) return;
     DataNode *current = dataList;
@@ -474,10 +477,10 @@ void listData(SQLSetup *setup, TimeValue *start, TimeValue *end) {
     double averageHum = 0;
 	while (current != NULL) {
 		printf("Temperature: %.3lf | Humidity: %.3lf | Time: %04d-%02d-%02d %02d:%02d:%02d\n",
-			current->data.temperature, current->data.humidity,
+			(fahrenheit ? current->data.f_temperature : current->data.temperature), current->data.humidity,
 			current->data.time.year, current->data.time.month, current->data.time.day,
 			current->data.time.hour, current->data.time.minute, current->data.time.second);
-		averageTemp += current->data.temperature;
+		averageTemp += (fahrenheit ? current->data.f_temperature : current->data.temperature);
 		averageHum += current->data.humidity;
 		current = current->next;
 		totalDataBlocks++;
@@ -640,6 +643,7 @@ void databaseMenu(SQLSetup *setup) {
 	TimeValue start;
 	TimeValue end;
 	enum PlotType plotType = BOTH;
+	int fahrenheit = 0;
 	initTime(&start, &end);
 	clearScreen();
 	while (1) {
@@ -647,6 +651,7 @@ void databaseMenu(SQLSetup *setup) {
 		puts("DATA EVALUATION");
 		printTimeRange(&start, &end);
 		printGraphingType(plotType);
+		printf("Temperature type: %s\n", (fahrenheit ? "Fahrenheit" : "Celsius"));
         input = promptString("> ");
         if (testInput(input, "help", 1)) {
 			clearScreen();
@@ -655,17 +660,23 @@ void databaseMenu(SQLSetup *setup) {
 		}
         else if (testInput(input, "list", 1)) {
 			clearScreen();
-			listData(setup, &start, &end);
+			listData(setup, &start, &end, fahrenheit);
 			enterToContinue();
         }
         else if (testInput(input, "graph", 1)) {
 			clearScreen();
 			DataNode *dataList = NULL;
 			if (getDataInRange(setup, &start, &end, &dataList)) {
-				plotData(dataList, &start, &end, plotType);
+				plotData(dataList, &start, &end, plotType, fahrenheit);
 				enterToContinue();
 			}
 			freeDataList(dataList);
+		}
+		else if (testInput(input, "fahrenheit", 1)) {
+			fahrenheit = 1;
+		}
+		else if (testInput(input, "celsius", 1)) {
+			fahrenheit = 0;
 		}
 		else if (testInput(input, "type", 1)) {
 			clearScreen();
