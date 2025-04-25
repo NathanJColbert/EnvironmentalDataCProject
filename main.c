@@ -346,6 +346,17 @@ void initTime(TimeValue *start, TimeValue *end) {
     start->hour = yesterday_tm->tm_hour;
 }
 
+void setTimeRelative(TimeValue *value, unsigned int hours) {
+    time_t now = time(NULL);
+    time_t time = now - hours * 60 * 60;
+    struct tm *tm_relative = localtime(&time);
+
+    value->year = tm_relative->tm_year + 1900;
+    value->month = tm_relative->tm_mon + 1;
+    value->day = tm_relative->tm_mday;
+    value->hour = tm_relative->tm_hour;
+}
+
 void printTimeRange(TimeValue *start, TimeValue *end) {
 	if (start == NULL || end == NULL) return;
 	printf("%04d-%02d-%02d %02d to %04d-%02d-%02d %02d\n",
@@ -488,12 +499,30 @@ void printGraphingType(enum PlotType plotType) {
 }
 
 void printEvaluationCommands() {
-	printf("%5s%40s\n", "Help / H", "Show all commands.");
-	printf("%5s%40s\n", "List / L", "List data in time range.");
+	printf("%5s%40s\n", "Help  / H", "Show all commands.");
+	printf("%5s%40s\n", "List  / L", "List data in time range.");
 	printf("%5s%40s\n", "Graph / G", "Graph the data in the time range.");
-	printf("%5s%40s\n", "Type / T", "Change graphing type.");
+	printf("%5s%40s\n", "Type  / T", "Change graphing type.");
 	printf("%5s%40s\n", "Range / R", "Set the time range for data retrieval.");
-	printf("%5s%40s\n", "Back / B", "Back to main control.");
+	printf("%5s%40s\n", "Back  / B", "Back to main control.");
+}
+
+void rangeHelp() {
+	printf("%5s%40s\n", "Help  / H", "Show all commands.");
+	printf("%5s%40s\n", "Start / S", "Edit the start time.");
+	printf("%5s%40s\n", "End   / S", "Edit the end time.");
+	printf("%5s%40s\n", "Back  / B", "Back to main control.");
+}
+
+void rangeValueHelp() {
+	printf("%5s%45s\n", "Help        ", "Show all commands.");
+	printf("%5s%45s\n", "Year     / Y", "Set the year.");
+	printf("%5s%45s\n", "Month    / M", "Set the month (1 - 12).");
+	printf("%5s%45s\n", "Day      / D", "Set the day (1 - 31).");
+	printf("%5s%45s\n", "Hour     / H", "Set the hour (0 [12am] - 23 [12pm]).");
+	printf("%5s%45s\n", "Current  / C", "Set the time to current time.");
+	printf("%5s%45s\n", "Subtract / S", "Set the time to current - hours input.");
+	printf("%5s%45s\n", "Back     / B", "Back to range settings (saves current work).");
 }
 
 void changeTimeValue(TimeValue *value) {
@@ -503,7 +532,12 @@ void changeTimeValue(TimeValue *value) {
 		puts("CURRENT TIME");
 		printTime(value);
 		input = promptString("> ");
-		if (testInput(input, "year", 1)) {
+		if (testInput(input, "help", 0)) {
+			clearScreen();
+			rangeValueHelp();
+			enterToContinue();
+		}
+		else if (testInput(input, "year", 1)) {
 			clearScreen();
 			puts("Enter new year: ");
 			scanf("%u", &value->year);
@@ -541,6 +575,16 @@ void changeTimeValue(TimeValue *value) {
 				enterToContinue();
 			}
 		}
+		else if (testInput(input, "current", 1)) {
+			setTimeRelative(value, 0);
+		}
+		else if (testInput(input, "subtract", 1)) {
+			clearScreen();
+			puts("Enter hours back from current (NOW) time: ");
+			unsigned int hoursBack = 0;
+			scanf("%u", &hoursBack);
+			setTimeRelative(value, hoursBack);
+		}
 		else if (testInput(input, "back", 1)) {
 			break;
 		}
@@ -548,6 +592,7 @@ void changeTimeValue(TimeValue *value) {
 	}
 	if (input != NULL) free(input);
 }
+
 void setRange(TimeValue *start, TimeValue *end) {
 	char *input = NULL;
 	while (1) {
@@ -555,7 +600,13 @@ void setRange(TimeValue *start, TimeValue *end) {
 		puts("CHANGE TIME RANGE");
 		printTimeRange(start, end);
 		input = promptString("> ");
+		if (testInput(input, "help", 1)) {
+			clearScreen();
+			rangeHelp();
+			enterToContinue();
+		}
 		if (testInput(input, "start", 1)) {
+			clearScreen();
 			TimeValue temp;
 			copyTimeValue(&temp, start);
 			changeTimeValue(start);
@@ -566,7 +617,15 @@ void setRange(TimeValue *start, TimeValue *end) {
 			}
 		}
 		else if (testInput(input, "end", 1)) {
-			
+			clearScreen();
+			TimeValue temp2;
+			copyTimeValue(&temp2, end);
+			changeTimeValue(end);
+			if (timeDifference(start, end) > 0) {
+				copyTimeValue(end, &temp2);
+				puts("End time is less than the start time. Reverting.");
+				enterToContinue();
+			}
 		}
 		else if (testInput(input, "back", 1)) {
 			break;
