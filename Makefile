@@ -4,7 +4,7 @@ LDFLAGS = -lwiringPi -lm -lmysqlclient
 
 SRC_DIR = src
 BUILD_DIR = build
-TARGET_NAME = Environmental_Program
+TARGET_NAME = program
 TARGET = $(BUILD_DIR)/$(TARGET_NAME)
 
 SRC = $(wildcard $(SRC_DIR)/*.c)
@@ -23,7 +23,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 
 # Run
 run: all
-	./$(TARGET)
+	./$(TARGET) $(ARGS)
 
 # Clean
 clean:

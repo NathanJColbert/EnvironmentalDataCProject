@@ -93,15 +93,6 @@ git clone https://github.com/NathanJColbert/EnvironmentalDataCProject.git
 # Navigate into the directory
 cd EnvironmentalDataCProject
 
-# (Optional) Adjust LCD address, DHT11 pin and sample rate
-# Open main.c and edit these values if needed:
-nano src/main.c
-
-// Inside main.c, look for:
-const int LCD_ADDRESS = 0x27;
-const int DHT11_PIN = 7;
-const size_t RATE_SECONDS = 600;
-
 # (Optional) set environment variables for database access
 # The program will prompt you if they are not set
 export EN_SERVER='localhost'
@@ -118,12 +109,25 @@ make run
 ## Usage
 Once built, the program will attempt to read data from the DHT11 sensor and write it to your SQL database. It will display temperature, humidity, and time on the LCD screen using the Linux system time via the C standard library.
 
-```bash
-# Build
-make
+Valid command line arguments. Hexadecimal is supported (using 0x{value}).
+- -lcd_address {Decimal}
+- -dht11_pin {Decimal}
+- -rate {Decimal}
+- -read_tries {Decimal}
+- -store_tries {Decimal}
 
-# Run
+```bash
+# Build and run
+make
+cd build
+./program
+OR
+./program -rate 300 ...
+
+# Quick Run
 make run
+OR
+make run ARGS="-lcd_address 0x27 -rate 300 ..."
 
 # Clean build
 make clean

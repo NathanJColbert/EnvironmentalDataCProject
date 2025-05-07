@@ -4,16 +4,17 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include <float.h>
 #include "DHT11Control.h"
 #include "LCDControl.h"
 #include "commandLineControl.h"
 #include "dataList.h"
 
-const int LCD_ADDRESS = 0x27;
-const int DHT11_PIN = 7;
-const size_t RATE_SECONDS = 600;
-const size_t MAX_READ_TRIES = 100;
-const size_t MAX_STORE_TRIES = 5;
+int LCD_ADDRESS = 0x27;
+int DHT11_PIN = 7;
+size_t RATE_SECONDS = 600;
+size_t MAX_READ_TRIES = 100;
+size_t MAX_STORE_TRIES = 5;
 
 char *buildStoreQuery(int data[], const char *tableName) {
     // insert into tableName values (x, y, z, ... );
@@ -319,6 +320,7 @@ void printCommands() {
     printf("%5s%40s\n", "Quit / Q", "Quit the program.");
     printf("%5s%40s\n", "Test / T", "Test the SQL connection.");
     printf("%5s%40s\n", "Data / D", "Open the tool to check the database.");
+    printf("%5s%40s\n", "Show / S", "Show the current global settings.");
 }
 
 void enterToContinue() {
@@ -477,21 +479,42 @@ void listData(SQLSetup *setup, TimeValue *start, TimeValue *end, int fahrenheit)
     if (!getDataInRange(setup, start, end, &dataList)) return;
     DataNode *current = dataList;
     int totalDataBlocks = 0;
+    
+    char tempChar = (fahrenheit ? 'F' : 'C');
+    
     double averageTemp = 0;
     double averageHum = 0;
+    
+    double maxTemp = DBL_MIN;
+    double maxHum = DBL_MIN;
+    double minTemp = DBL_MAX;
+    double minHum = DBL_MAX;
+    
+    double currentTemp = 0;
     while (current != NULL) {
-        printf("Temperature: %.3lf | Humidity: %.3lf | Time: %04d-%02d-%02d %02d:%02d:%02d\n",
-            (fahrenheit ? current->data.f_temperature : current->data.temperature), current->data.humidity,
+        currentTemp = (fahrenheit ? current->data.f_temperature : current->data.temperature);
+        printf("Temperature: %.3lf%c | Humidity: %.3lf | Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+            currentTemp, tempChar, current->data.humidity,
             current->data.time.year, current->data.time.month, current->data.time.day,
             current->data.time.hour, current->data.time.minute, current->data.time.second);
-        averageTemp += (fahrenheit ? current->data.f_temperature : current->data.temperature);
+        averageTemp += currentTemp;
         averageHum += current->data.humidity;
+        
+        if (currentTemp > maxTemp) maxTemp = currentTemp;
+        if (current->data.humidity > maxHum) maxHum = current->data.humidity;
+        if (currentTemp < minTemp) minTemp = currentTemp;
+        if (current->data.humidity < minHum) minHum = current->data.humidity;
+        
         current = current->next;
         totalDataBlocks++;
     }
     averageTemp /= totalDataBlocks;
     averageHum /= totalDataBlocks;
-    printf("\nAverage temperature: %.3lf | Average humidity: %.3lf\n", averageTemp, averageHum);
+    
+    printf("\nAverage temperature: %.3lf%c | Average humidity: %.3lf\n", averageTemp, tempChar, averageHum);
+    printf("Max temperature: %.3lf%c | Max humidity: %.3lf\n", maxTemp, tempChar, maxHum);
+    printf("Min temperature: %.3lf%c | Min humidity: %.3lf\n", minTemp, tempChar, minHum);
+    
     printf("Total values in set: %d\n", totalDataBlocks);
     freeDataList(dataList);
 }
@@ -729,6 +752,16 @@ void menuInput(SQLSetup *setup) {
         else if (testInput(input, "data", 1)) {
             databaseMenu(setup);
         }
+        else if (testInput(input, "show", 1)) {
+            clearScreen();
+            printf("Current settings\n");
+            printf("\tLCD_ADDRESS = 0x%X\n", LCD_ADDRESS);
+            printf("\tDHT11_PIN = %d\n", DHT11PIN);
+            printf("\tRATE_SECONDS = %d\n", (int)RATE_SECONDS);
+            printf("\tMAX_READ_TRIES = %d\n", (int)MAX_READ_TRIES);
+            printf("\tMAX_STORE_TRIES = %d\n", (int)MAX_STORE_TRIES);
+            enterToContinue();
+        }
         clearScreen();
     }
     if (input != NULL) free(input);
@@ -805,10 +838,68 @@ int printEnvironmentSetupExport(const SQLSetup *setup) {
     return 1;
 }
 
-int main() {
+int main(int argc, char *argv[]) {    
+    if (argc > 1) {
+        Argument **args = getArgs(argc, argv);
+        if (args == NULL) {
+            printf("Invalid arg number OR had issues allocating space\n");
+            return -1;
+        }
+        
+        int invalid = 0;
+        for (int i = 0; args[i] != NULL; i++) {
+            int used = 0;
+            if (compareFlag(args[i], "-lcd_address")) {
+                if (args[i]->isInt) {
+                    LCD_ADDRESS = args[i]->intValue;
+                    used = 1;
+                }
+            }
+            if (compareFlag(args[i], "-dht11_pin")) {
+                if (args[i]->isInt) {
+                    DHT11_PIN = args[i]->intValue;
+                    used = 1;
+                }
+            }
+            if (compareFlag(args[i], "-rate")) {
+                if (args[i]->isInt) {
+                    RATE_SECONDS = (size_t)args[i]->intValue;
+                    used = 1;
+                }
+            }
+            if (compareFlag(args[i], "-read_tries")) {
+                if (args[i]->isInt) {
+                    MAX_READ_TRIES = (size_t)args[i]->intValue;
+                    used = 1;
+                }
+            }
+            if (compareFlag(args[i], "-store_tries")) {
+                if (args[i]->isInt) {
+                    MAX_STORE_TRIES = (size_t)args[i]->intValue;
+                    used = 1;
+                }
+            }
+            if (!used) {
+                printf("Invalid argument of flag: \"%s\"\n", args[i]->flag);
+                printArg(args[i]);
+                invalid = 1;
+            }
+        }
+        freeArguments(args);
+        if (invalid) {
+            puts("\nValid arguments");
+            puts("\t-lcd_address {Decimal}");
+            puts("\t-dht11_pin {Decimal}");
+            puts("\t-rate {Decimal}");
+            puts("\t-read_tries {Decimal}");
+            puts("\t-store_tries {Decimal}");
+            return -1;
+        }
+    }
+    
     SQLSetup setup;
     int exitProgram = 0;
-        
+    
     getEnvironmentSetup(&setup);
     if (!testConnection(&setup)) {
         while (1) {
