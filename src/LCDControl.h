@@ -57,9 +57,11 @@ void send_data(int data) {
     write_word(buf);
 }
 
-void lcd_init(int address) {
+int lcd_init(int address) {
     LCDAddr = address;
     fd = wiringPiI2CSetup(LCDAddr);
+    if (fd == -1)
+        return 0;
     
     send_command(0x33); // Must initialize to 8-line mode at first
     delay(5);
@@ -71,6 +73,7 @@ void lcd_init(int address) {
     delay(5);
     send_command(0x01); // Clear Screen
     wiringPiI2CWrite(fd, 0x08);
+    return 1;
 }
 
 void clear() { send_command(0x01); /*clear Screen*/ }
@@ -94,7 +97,7 @@ void writeRegister(int x, int y, char data[]) {
 
 char* getDoubleString(double input, unsigned int length) {
 	if (length == 0) return NULL;
-	int decimalPlace = length + 1;
+	unsigned int decimalPlace = length + 1;
 	int divisor = pow(10, length);
 	int outsideBounds = 0;
 	
@@ -115,7 +118,7 @@ char* getDoubleString(double input, unsigned int length) {
 	char *output = (char*)malloc((length + 2) * sizeof(char));
 	
 	int converted = (int)input;
-	int i = 0;
+	unsigned int i = 0;
 	while (divisor > 0) {
 		if (i >= length) break;
 		if (i == decimalPlace) output[i++] = '.';
