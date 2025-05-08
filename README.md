@@ -17,6 +17,9 @@ The external linked libraries are,
 ```bash
 -lwiringPi -lm -lmysqlclient
 ```
+
+gnuplot is also used to graph the data.
+
 The math library (lm) should come with C tools
 
 The wiring pi library is an open source repo at https://github.com/WiringPi/WiringPi. Creating the debian-package is the easiest way. Current instructions (subject to change)
@@ -40,6 +43,14 @@ MySQL is a common package install through apt.
 sudo apt install libmysqlclient-dev
 # Check the install ->
 dpkg -l | grep libmysqlclient
+```
+
+gnuplot can be installed with apt in linux.
+```bash
+# Using apt
+sudo apt install gnuplot
+# Check the install ->
+dpkg -l | grep gnuplot
 ```
 
 Optionally install I2C tools to interface the LCD panel easier
