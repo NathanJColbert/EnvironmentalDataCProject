@@ -1,18 +1,28 @@
 # Environmental Data Project
 
 ## Description
-A C-core project made to run on a Raspberry Pi, Raspbian/Linux. Uses I2C LCD and DHT11 temp/hum sensor. Stores data in MariaDB.
+A C-core project made to run on a Raspberry Pi 4B, Raspbian/Linux. Uses I2C LCD and DHT11 temp/hum sensor. Stores data in MySQL.
 
-I use make for the build system. This is because Linux is the only system this project was built for.
+I use "make" for the build system. The project was only build for a Raspberry Pi board, hence Linux is sufficient for the project.
 
 ## Table of Contents
 
+- [Source Architecture](#source-architecture)
 - [Dependencies](#dependencies)
 - [Hardware Requirements](#hardware-requirements)
 - [Installation & Setup](#installation--setup)
 - [Usage](#usage)
 
+## Source Architecture
+
+Running on a Raspberry Pi 4B
+OS - Debian GNU/Linux 12 (Bookworm)
+Architecture - ARM64 (aarch64)
+Distribution: Raspberry Pi OS (based on Debian 12)
+Kernel version - Debian 1:6.6.74-1+rpt1
+
 ## Dependencies
+
 The external linked libraries are,
 ```bash
 -lwiringPi -lm -lmysqlclient
@@ -66,6 +76,9 @@ i2cdetect -y 1
 
 ## Hardware Requirements
 I am using a DHT11 Temperature and Humidity sensor and a 16x2 LCD panel with an I2C interface. (I am not a real man using the I2C I KNOW!)
+
+DHT11 (bare sensor, 3-pin)
+16x2 LCD panel with a generic I2C interface (my address is 0x27)
 
 TODO -> Fritzing Diagram, DHT11 model number and sensor type, LCD panel model number
 
