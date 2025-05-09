@@ -80,7 +80,8 @@ I am using a DHT11 Temperature and Humidity sensor and a 16x2 LCD panel with an 
 DHT11 (bare sensor, 3-pin)
 16x2 LCD panel with a generic I2C interface (my address is 0x27)
 
-TODO -> Fritzing Diagram, DHT11 model number and sensor type, LCD panel model number
+![Wiring Diagram](images/WiringDiagram.png)
+*Simple circuit: no GPIO extension board needed.*
 
 ## Installation & Setup
 Before installing. Make sure your [Dependencies](#dependencies) are up to date
