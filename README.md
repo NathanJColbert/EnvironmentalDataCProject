@@ -168,25 +168,25 @@ Gathering a data point at every ~10 minutes (I re-compiled and ran the program m
 
 Listing the data of one day looks like,
 
-![Data5/13Setup](images/Data5_13Setup.PNG)
-![Data5/13List](images/Data5_13List.PNG)
+![Data5/13Setup](images/Data5_13Setup.png)
+![Data5/13List](images/Data5_13List.png)
 
 And Graphed,
 
-![Data5/13Graph](images/Data5_13Graph.PNG)
+![Data5/13Graph](images/Data5_13Graph.png)
 
 Listing all my data (3 weeks),
 
-![AllDataSetup](images/AllDataSetup.PNG)
-![AllDataList](images/AllDataList.PNG)
+![AllDataSetup](images/AllDataSetup.png)
+![AllDataList](images/AllDataList.png)
 
 To fahrenheit ->
 
-![AllDataListF](images/AllDataListF.PNG)
+![AllDataListF](images/AllDataListF.png)
 
 And Graphed,
 
-![AllDataGraph](images/AllDataGraph.PNG)
+![AllDataGraph](images/AllDataGraph.png)
 
 This data took ~5 seconds to graph (too long!)
 
@@ -194,7 +194,6 @@ Looking at my data you can see the spikes and dips of temperature / humidity. Th
 
 Now, graphing just the temperature in fahrenheit,
 
-![AllDataTFGraph](images/AllDataTFGraph.PNG)
+![AllDataTFGraph](images/AllDataTFGraph.png)
 
 We can see an upward trend. It is approaching summer time.
- 
