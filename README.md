@@ -12,6 +12,7 @@ I use "make" for the build system. The project was only build for a Raspberry Pi
 - [Hardware Requirements](#hardware-requirements)
 - [Installation & Setup](#installation--setup)
 - [Usage](#usage)
+- [Examples](#examples)
 
 ## Source Architecture
 
@@ -157,3 +158,43 @@ make run ARGS="-lcd_address 0x27 -rate 300 ..."
 # Clean build
 make clean
 ```
+
+## Examples
+I have been running my program over the span of ~3 weeks. The Hardware was in my garage (I felt it was the most environmentally changing area; not outside).
+
+[ 2025-04-23 15:39:02 - 2025-05-13 12:03:59 ]
+
+Gathering a data point at every ~10 minutes (I re-compiled and ran the program multiple times so 10 minute intervals is not 100% accurate).
+
+Listing the data of one day looks like,
+
+![Data5/13Setup](images/Data5_13Setup.PNG)
+![Data5/13List](images/Data5_13List.PNG)
+
+And Graphed,
+
+![Data5/13Graph](images/Data5_13Graph.PNG)
+
+Listing all my data (3 weeks),
+
+![AllDataSetup](images/AllDataSetup.PNG)
+![AllDataList](images/AllDataList.PNG)
+
+To fahrenheit ->
+
+![AllDataListF](images/AllDataListF.PNG)
+
+And Graphed,
+
+![AllDataGraph](images/AllDataGraph.PNG)
+
+This data took ~5 seconds to graph (too long!)
+
+Looking at my data you can see the spikes and dips of temperature / humidity. They are opposite to each other. This makes sense, because I live near the ocean; when it gets colder I.E. the cold air from the ocean comes in, the humidity increases due to the ocean air.
+
+Now, graphing just the temperature in fahrenheit,
+
+![AllDataTFGraph](images/AllDataTFGraph.PNG)
+
+We can see an upward trend. It is approaching summer time.
+ 
