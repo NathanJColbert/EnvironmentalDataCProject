@@ -3,7 +3,7 @@
 ## Description
 A C-core project made to run on a Raspberry Pi 4B, Raspbian/Linux. Uses I2C LCD and DHT11 temp/hum sensor. Stores data in MySQL.
 
-I use "make" for the build system. The project was only build for a Raspberry Pi board, hence Linux is sufficient for the project.
+I use "make" for the build system. The project was only built for a Raspberry Pi board, hence Linux is sufficient for the project.
 
 ## Table of Contents
 
